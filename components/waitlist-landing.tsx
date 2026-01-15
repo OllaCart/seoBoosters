@@ -33,19 +33,37 @@ export function WaitlistLanding() {
   const [showSuccess, setShowSuccess] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const animationFrameRef = useRef<number>()
+  const lastFrameTimeRef = useRef<number | null>(null)
 
   const [animationPhase, setAnimationPhase] = useState<AnimationPhase>("idle")
   const [pressProgress, setPressProgress] = useState(0)
   const [newCoinData, setNewCoinData] = useState<{ imageUrl: string | null } | null>(null)
 
+  const COIN_SIZE = 80
+  const COIN_RADIUS = COIN_SIZE / 2
+  const SIDE_PADDING = 24
+  const FLOOR_PADDING = 32
+
+  const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
+  const getBounds = () => ({
+    left: SIDE_PADDING + COIN_RADIUS,
+    right: window.innerWidth - SIDE_PADDING - COIN_RADIUS,
+    bottom: window.innerHeight - FLOOR_PADDING - COIN_RADIUS,
+  })
+
   useEffect(() => {
     const loadCoins = async () => {
       const { coins: existingCoins } = await getWaitlistCoins()
+      const bounds = getBounds()
       const loadedCoins: Coin[] = existingCoins.map((coin: any) => ({
         id: coin.id,
         imageUrl: coin.image_url,
-        x: coin.coin_x || Math.random() * (window.innerWidth - 200) + 100,
-        y: coin.coin_y || window.innerHeight - 100,
+        x: clamp(
+          coin.coin_x ?? Math.random() * (window.innerWidth - 200) + 100,
+          bounds.left,
+          bounds.right
+        ),
+        y: clamp(coin.coin_y ?? bounds.bottom, COIN_RADIUS + 40, bounds.bottom),
         rotation: coin.coin_rotation || Math.random() * 360,
         velocityY: 0,
         velocityX: 0,
@@ -58,40 +76,57 @@ export function WaitlistLanding() {
   }, [])
 
   useEffect(() => {
-    const animate = () => {
+    const animate = (time: number) => {
+      const lastTime = lastFrameTimeRef.current ?? time
+      const delta = Math.min(2, (time - lastTime) / 16.67)
+      lastFrameTimeRef.current = time
+
       setCoins((prevCoins) => {
+        const bounds = getBounds()
         return prevCoins.map((coin) => {
           if (coin.settled) return coin
 
-          const boxBottom = window.innerHeight - 80
-          const boxLeft = 80
-          const boxRight = window.innerWidth - 80
+          const boxBottom = bounds.bottom
+          const boxLeft = bounds.left
+          const boxRight = bounds.right
 
-          let newY = coin.y + coin.velocityY
-          let newX = coin.x + coin.velocityX
-          const newRotation = coin.rotation + coin.velocityRotation
-          let newVelocityY = coin.velocityY + 0.8 // gravity
-          let newVelocityX = coin.velocityX * 0.98 // friction
-          let newVelocityRotation = coin.velocityRotation * 0.95
+          let newVelocityY = coin.velocityY + 0.9 * delta // gravity
+          let newVelocityX = coin.velocityX * Math.pow(0.985, delta) // air drag
+          let newVelocityRotation = coin.velocityRotation * Math.pow(0.96, delta)
+          let newY = coin.y + newVelocityY * delta
+          let newX = coin.x + newVelocityX * delta
+          const newRotation = coin.rotation + newVelocityRotation * delta
           let settled = coin.settled
 
           // Bottom collision
           if (newY >= boxBottom) {
             newY = boxBottom
-            newVelocityY = -newVelocityY * 0.4 // bounce with energy loss
-            newVelocityRotation = (Math.random() - 0.5) * 8
+            newVelocityY = -newVelocityY * 0.35 // bounce with energy loss
+            newVelocityX = newVelocityX * 0.7 // floor friction
+            newVelocityRotation += newVelocityX * 0.25
 
-            if (Math.abs(newVelocityY) < 0.5) {
+            if (Math.abs(newVelocityY) < 0.25) {
               newVelocityY = 0
-              newVelocityRotation = 0
-              settled = true
             }
           }
 
           // Side collisions
           if (newX < boxLeft || newX > boxRight) {
-            newVelocityX = -newVelocityX * 0.5
+            newVelocityX = -newVelocityX * 0.6
             newX = newX < boxLeft ? boxLeft : boxRight
+            newVelocityRotation += newVelocityX * 0.4
+          }
+
+          if (
+            Math.abs(newVelocityY) < 0.25 &&
+            Math.abs(newVelocityX) < 0.15 &&
+            Math.abs(newVelocityRotation) < 0.2 &&
+            newY >= boxBottom
+          ) {
+            newVelocityY = 0
+            newVelocityX = 0
+            newVelocityRotation = 0
+            settled = true
           }
 
           return {
@@ -116,6 +151,7 @@ export function WaitlistLanding() {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current)
       }
+      lastFrameTimeRef.current = null
     }
   }, [])
 
@@ -167,15 +203,16 @@ export function WaitlistLanding() {
   }
 
   const createCoin = (imageUrl: string | null) => {
+    const bounds = getBounds()
     const newCoin: Coin = {
       id: Math.random().toString(36).substr(2, 9),
       imageUrl,
-      x: window.innerWidth / 2 + (Math.random() - 0.5) * 100,
-      y: 150,
+      x: clamp(window.innerWidth / 2 + (Math.random() - 0.5) * 140, bounds.left, bounds.right),
+      y: 120,
       rotation: Math.random() * 360,
-      velocityY: 8,
-      velocityX: (Math.random() - 0.5) * 8,
-      velocityRotation: (Math.random() - 0.5) * 20,
+      velocityY: 2.5,
+      velocityX: (Math.random() - 0.5) * 6,
+      velocityRotation: (Math.random() - 0.5) * 12,
       settled: false,
     }
 
@@ -205,8 +242,9 @@ export function WaitlistLanding() {
         }
       }
 
-      const finalX = window.innerWidth / 2 + (Math.random() - 0.5) * 100
-      const finalY = window.innerHeight - 80
+      const bounds = getBounds()
+      const finalX = clamp(window.innerWidth / 2 + (Math.random() - 0.5) * 140, bounds.left, bounds.right)
+      const finalY = bounds.bottom
       const finalRotation = Math.random() * 360
 
       const formData = new FormData()

@@ -11,6 +11,25 @@ export const metadata: Metadata = {
   title: "STYBL - Stablecoin News Coming Soon",
   description: "Join the waitlist for STYBL, your trusted source for stablecoin news and updates.",
   generator: "v0.app",
+  openGraph: {
+    title: "STYBL - Stablecoin News Coming Soon",
+    description: "Join the waitlist for STYBL, your trusted source for stablecoin news and updates.",
+    type: "website",
+    images: [
+      {
+        url: "/og-image.svg",
+        width: 1200,
+        height: 630,
+        alt: "STYBL icon",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "STYBL - Stablecoin News Coming Soon",
+    description: "Join the waitlist for STYBL, your trusted source for stablecoin news and updates.",
+    images: ["/og-image.svg"],
+  },
   icons: {
     icon: [
       {
