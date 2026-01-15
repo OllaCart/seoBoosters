@@ -83,63 +83,103 @@ export function WaitlistLanding() {
 
       setCoins((prevCoins) => {
         const bounds = getBounds()
-        return prevCoins.map((coin) => {
-          if (coin.settled) return coin
+        const boxBottom = bounds.bottom
+        const boxLeft = bounds.left
+        const boxRight = bounds.right
+        const updatedCoins: Coin[] = prevCoins.map((coin) => ({ ...coin }))
 
-          const boxBottom = bounds.bottom
-          const boxLeft = bounds.left
-          const boxRight = bounds.right
+        for (let i = 0; i < updatedCoins.length; i += 1) {
+          const coin = updatedCoins[i]
+          if (coin.settled) {
+            continue
+          }
 
-          let newVelocityY = coin.velocityY + 0.9 * delta // gravity
-          let newVelocityX = coin.velocityX * Math.pow(0.985, delta) // air drag
-          let newVelocityRotation = coin.velocityRotation * Math.pow(0.96, delta)
-          let newY = coin.y + newVelocityY * delta
-          let newX = coin.x + newVelocityX * delta
-          const newRotation = coin.rotation + newVelocityRotation * delta
+          let velocityY = coin.velocityY + 0.95 * delta // gravity
+          let velocityX = coin.velocityX * Math.pow(0.985, delta) // air drag
+          let velocityRotation = coin.velocityRotation * Math.pow(0.96, delta)
+          let nextX = coin.x + velocityX * delta
+          let nextY = coin.y + velocityY * delta
+          let nextRotation = coin.rotation + velocityRotation * delta
           let settled = coin.settled
 
           // Bottom collision
-          if (newY >= boxBottom) {
-            newY = boxBottom
-            newVelocityY = -newVelocityY * 0.35 // bounce with energy loss
-            newVelocityX = newVelocityX * 0.7 // floor friction
-            newVelocityRotation += newVelocityX * 0.25
+          if (nextY >= boxBottom) {
+            nextY = boxBottom
+            velocityY = -velocityY * 0.28
+            velocityX = velocityX * 0.7
+            velocityRotation += velocityX * 0.25
 
-            if (Math.abs(newVelocityY) < 0.25) {
-              newVelocityY = 0
+            if (Math.abs(velocityY) < 0.2) {
+              velocityY = 0
             }
           }
 
           // Side collisions
-          if (newX < boxLeft || newX > boxRight) {
-            newVelocityX = -newVelocityX * 0.6
-            newX = newX < boxLeft ? boxLeft : boxRight
-            newVelocityRotation += newVelocityX * 0.4
+          if (nextX < boxLeft || nextX > boxRight) {
+            velocityX = -velocityX * 0.6
+            nextX = nextX < boxLeft ? boxLeft : boxRight
+            velocityRotation += velocityX * 0.4
+          }
+
+          // Coin-to-coin collisions
+          for (let j = 0; j < updatedCoins.length; j += 1) {
+            if (i === j) continue
+            const other = updatedCoins[j]
+            const dx = nextX - other.x
+            const dy = nextY - other.y
+            const distance = Math.hypot(dx, dy)
+            const minDistance = COIN_RADIUS * 2
+
+            if (distance > 0 && distance < minDistance) {
+              const overlap = minDistance - distance
+              const nx = dx / distance
+              const ny = dy / distance
+
+              // Separate the coins
+              nextX += nx * overlap
+              nextY += ny * overlap
+
+              // Simple collision response along the normal
+              const relativeVelocity = velocityX * nx + velocityY * ny
+              if (relativeVelocity < 0) {
+                const restitution = other.settled ? 0.1 : 0.22
+                velocityX -= (1 + restitution) * relativeVelocity * nx
+                velocityY -= (1 + restitution) * relativeVelocity * ny
+              }
+            }
           }
 
           if (
-            Math.abs(newVelocityY) < 0.25 &&
-            Math.abs(newVelocityX) < 0.15 &&
-            Math.abs(newVelocityRotation) < 0.2 &&
-            newY >= boxBottom
+            Math.abs(velocityY) < 0.2 &&
+            Math.abs(velocityX) < 0.12 &&
+            Math.abs(velocityRotation) < 0.18 &&
+            (nextY >= boxBottom ||
+              updatedCoins.some(
+                (other, index) =>
+                  index !== i &&
+                  other.settled &&
+                  Math.hypot(nextX - other.x, nextY - other.y) <= COIN_RADIUS * 2 + 0.5
+              ))
           ) {
-            newVelocityY = 0
-            newVelocityX = 0
-            newVelocityRotation = 0
+            velocityY = 0
+            velocityX = 0
+            velocityRotation = 0
             settled = true
           }
 
-          return {
+          updatedCoins[i] = {
             ...coin,
-            y: newY,
-            x: newX,
-            rotation: newRotation,
-            velocityY: newVelocityY,
-            velocityX: newVelocityX,
-            velocityRotation: newVelocityRotation,
+            x: nextX,
+            y: nextY,
+            rotation: nextRotation,
+            velocityY,
+            velocityX,
+            velocityRotation,
             settled,
           }
-        })
+        }
+
+        return updatedCoins
       })
 
       animationFrameRef.current = requestAnimationFrame(animate)
@@ -180,19 +220,15 @@ export function WaitlistLanding() {
           // Reveal coin
           setTimeout(() => {
             setAnimationPhase("revealing")
-            // Start sliding
+            // Start falling
             setTimeout(() => {
-              setAnimationPhase("sliding")
-              // Start falling
+              setAnimationPhase("falling")
+              createCoin(imageUrl)
+              // Reset
               setTimeout(() => {
-                setAnimationPhase("falling")
-                createCoin(imageUrl)
-                // Reset
-                setTimeout(() => {
-                  setAnimationPhase("idle")
-                  setNewCoinData(null)
-                }, 500)
-              }, 800)
+                setAnimationPhase("idle")
+                setNewCoinData(null)
+              }, 500)
             }, 600)
           }, 400)
           return 100
@@ -207,12 +243,12 @@ export function WaitlistLanding() {
     const newCoin: Coin = {
       id: Math.random().toString(36).substr(2, 9),
       imageUrl,
-      x: clamp(window.innerWidth / 2 + (Math.random() - 0.5) * 140, bounds.left, bounds.right),
-      y: 120,
+      x: clamp(window.innerWidth / 2, bounds.left, bounds.right),
+      y: Math.max(90, COIN_RADIUS + 20),
       rotation: Math.random() * 360,
-      velocityY: 2.5,
-      velocityX: (Math.random() - 0.5) * 6,
-      velocityRotation: (Math.random() - 0.5) * 12,
+      velocityY: 1.8,
+      velocityX: (Math.random() - 0.5) * 2.5,
+      velocityRotation: (Math.random() - 0.5) * 8,
       settled: false,
     }
 
@@ -243,7 +279,7 @@ export function WaitlistLanding() {
       }
 
       const bounds = getBounds()
-      const finalX = clamp(window.innerWidth / 2 + (Math.random() - 0.5) * 140, bounds.left, bounds.right)
+      const finalX = clamp(window.innerWidth / 2, bounds.left, bounds.right)
       const finalY = bounds.bottom
       const finalRotation = Math.random() * 360
 
@@ -315,14 +351,14 @@ export function WaitlistLanding() {
         </div>
       )}
 
-      {(animationPhase === "revealing" || animationPhase === "sliding") && newCoinData && (
+      {(animationPhase === "revealing" || animationPhase === "falling") && newCoinData && (
         <div
           className="pointer-events-none fixed z-40"
           style={{
-            left: animationPhase === "sliding" ? "50%" : "50%",
-            top: animationPhase === "sliding" ? "100px" : "50px",
+            left: "50%",
+            top: "68px",
             transform: `translateX(-50%) scale(${animationPhase === "revealing" ? 0.8 : 1})`,
-            transition: "all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)",
+            transition: "transform 0.4s ease-out",
           }}
         >
           <div className="relative h-24 w-24 rounded-full border-4 border-yellow-500 bg-gradient-to-br from-yellow-400 via-yellow-300 to-yellow-500 shadow-2xl">
