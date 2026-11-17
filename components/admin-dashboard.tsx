@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { emailAllWaitlistEntries } from "@/app/actions/admin-waitlist"
 
 interface Submission {
   id: string
@@ -20,6 +21,8 @@ interface AdminDashboardProps {
 export function AdminDashboard({ initialSubmissions }: AdminDashboardProps) {
   const [submissions] = useState<Submission[]>(initialSubmissions)
   const [searchQuery, setSearchQuery] = useState("")
+  const [isEmailing, setIsEmailing] = useState(false)
+  const [emailStatus, setEmailStatus] = useState<string | null>(null)
 
   const filteredSubmissions = submissions.filter(
     (sub) =>
@@ -47,6 +50,23 @@ export function AdminDashboard({ initialSubmissions }: AdminDashboardProps) {
     window.URL.revokeObjectURL(url)
   }
 
+  const emailAllToJohn = async () => {
+    setIsEmailing(true)
+    setEmailStatus(null)
+    try {
+      const result = await emailAllWaitlistEntries()
+      if (result.error) {
+        setEmailStatus(result.error)
+      } else {
+        setEmailStatus(`Emailed ${result.count} submissions to john@jpastre.com`)
+      }
+    } catch {
+      setEmailStatus("Failed to email submissions.")
+    } finally {
+      setIsEmailing(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 p-8">
       <div className="mx-auto max-w-7xl">
@@ -56,12 +76,21 @@ export function AdminDashboard({ initialSubmissions }: AdminDashboardProps) {
               STYBL <span className="text-yellow-400">Admin</span>
             </h1>
             <p className="mt-2 text-slate-400">Waitlist Submissions Dashboard</p>
+            {emailStatus && <p className="mt-2 text-sm text-slate-300">{emailStatus}</p>}
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right">
               <p className="text-sm text-slate-400">Total Submissions</p>
               <p className="text-3xl font-bold text-yellow-400">{submissions.length}</p>
             </div>
+            <Button
+              onClick={emailAllToJohn}
+              disabled={isEmailing || submissions.length === 0}
+              variant="outline"
+              className="border-slate-600 bg-slate-900 text-white hover:bg-slate-800"
+            >
+              {isEmailing ? "Emailing…" : "Email all to John"}
+            </Button>
             <Button
               onClick={exportToCSV}
               className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-yellow-950 hover:from-yellow-500 hover:to-yellow-700"

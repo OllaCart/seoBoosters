@@ -1,6 +1,20 @@
 "use server"
 
+import { notifyWaitlistSignup } from "@/lib/notify-waitlist"
+import { getSupabaseServiceClient } from "@/lib/supabase/admin"
 import { getSupabaseServerClient } from "@/lib/supabase/server"
+
+async function getWaitlistWriteClient() {
+  // Prefer service role so inserts work even before anon GRANTs are applied.
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    try {
+      return getSupabaseServiceClient()
+    } catch (error) {
+      console.error("[stybl] Service role client unavailable, falling back to anon:", error)
+    }
+  }
+  return getSupabaseServerClient()
+}
 
 export async function submitWaitlist(formData: FormData) {
   const email = formData.get("email") as string
@@ -14,7 +28,7 @@ export async function submitWaitlist(formData: FormData) {
     return { error: "Email is required" }
   }
 
-  const supabase = await getSupabaseServerClient()
+  const supabase = await getWaitlistWriteClient()
 
   const { error } = await supabase.from("waitlist_submissions").insert({
     email,
@@ -28,6 +42,16 @@ export async function submitWaitlist(formData: FormData) {
   if (error) {
     console.error("[v0] Error submitting to waitlist:", error)
     return { error: "Failed to submit. Please try again." }
+  }
+
+  try {
+    await notifyWaitlistSignup({
+      email,
+      message: message || null,
+      imageUrl: imageUrl || null,
+    })
+  } catch (notifyError) {
+    console.error("[stybl] Waitlist notify failed:", notifyError)
   }
 
   return { success: true }
