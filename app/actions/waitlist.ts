@@ -36,8 +36,9 @@ export async function submitWaitlist(formData: FormData) {
 export async function getWaitlistCoins() {
   const supabase = await getSupabaseServerClient()
 
+  // Public view exposes coin visuals only — not email/message PII.
   const { data, error } = await supabase
-    .from("waitlist_submissions")
+    .from("waitlist_coins")
     .select("id, image_url, coin_x, coin_y, coin_rotation")
     .order("created_at", { ascending: true })
 
