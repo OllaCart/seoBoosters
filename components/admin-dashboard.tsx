@@ -21,6 +21,7 @@ interface AdminDashboardProps {
 export function AdminDashboard({ initialSubmissions }: AdminDashboardProps) {
   const [submissions] = useState<Submission[]>(initialSubmissions)
   const [searchQuery, setSearchQuery] = useState("")
+  const [adminSecret, setAdminSecret] = useState("")
   const [isEmailing, setIsEmailing] = useState(false)
   const [emailStatus, setEmailStatus] = useState<string | null>(null)
 
@@ -51,10 +52,14 @@ export function AdminDashboard({ initialSubmissions }: AdminDashboardProps) {
   }
 
   const emailAllToJohn = async () => {
+    if (!adminSecret.trim()) {
+      setEmailStatus("Enter STYBL_ADMIN_SECRET to email the digest.")
+      return
+    }
     setIsEmailing(true)
     setEmailStatus(null)
     try {
-      const result = await emailAllWaitlistEntries()
+      const result = await emailAllWaitlistEntries(adminSecret)
       if (result.error) {
         setEmailStatus(result.error)
       } else {
@@ -83,6 +88,14 @@ export function AdminDashboard({ initialSubmissions }: AdminDashboardProps) {
               <p className="text-sm text-slate-400">Total Submissions</p>
               <p className="text-3xl font-bold text-yellow-400">{submissions.length}</p>
             </div>
+            <Input
+              type="password"
+              placeholder="Admin secret"
+              value={adminSecret}
+              onChange={(e) => setAdminSecret(e.target.value)}
+              className="w-40 border-slate-700 bg-slate-900 text-white placeholder:text-slate-500"
+              autoComplete="off"
+            />
             <Button
               onClick={emailAllToJohn}
               disabled={isEmailing || submissions.length === 0}
