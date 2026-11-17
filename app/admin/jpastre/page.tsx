@@ -11,7 +11,22 @@ export default async function AdminPage() {
 
   if (error) {
     console.error("[v0] Error fetching submissions:", error)
-    return <div className="p-8 text-red-500">Error loading submissions</div>
+    const permissionDenied =
+      error.code === "42501" || /permission denied/i.test(error.message || "")
+    return (
+      <div className="space-y-2 p-8 text-red-500">
+        <p>Error loading submissions</p>
+        {permissionDenied ? (
+          <p className="text-sm text-red-300">
+            Database role cannot access waitlist_submissions. Run{" "}
+            <code className="rounded bg-slate-900 px-1">scripts/004_fix_waitlist_permissions.sql</code>{" "}
+            in the Supabase SQL Editor, then reload.
+          </p>
+        ) : (
+          <p className="text-sm text-red-300">{error.message}</p>
+        )}
+      </div>
+    )
   }
 
   return <AdminDashboard initialSubmissions={submissions || []} />
