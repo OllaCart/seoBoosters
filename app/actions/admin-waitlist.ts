@@ -4,7 +4,7 @@ import { timingSafeEqual } from "crypto"
 import { notifyWaitlistDigest } from "@/lib/notify-waitlist"
 import { getSupabaseServiceClient } from "@/lib/supabase/admin"
 
-const PAGE_SIZE = 1000
+const PAGE_SIZE = 100
 
 function secretsEqual(provided: string, expected: string) {
   const a = Buffer.from(provided)
@@ -44,7 +44,9 @@ export async function emailAllWaitlistEntries(adminSecret: string) {
       created_at: string
     }[] = []
 
-    for (let from = 0; ; from += PAGE_SIZE) {
+    // Advance by the number of rows actually returned so a server max-rows
+    // cap below PAGE_SIZE cannot truncate the digest early.
+    for (let from = 0; ; ) {
       const to = from + PAGE_SIZE - 1
       const { data, error } = await supabase
         .from("waitlist_submissions")
@@ -58,10 +60,11 @@ export async function emailAllWaitlistEntries(adminSecret: string) {
       }
 
       const page = data || []
-      rows.push(...page)
-      if (page.length < PAGE_SIZE) {
+      if (page.length === 0) {
         break
       }
+      rows.push(...page)
+      from += page.length
     }
 
     if (rows.length === 0) {
