@@ -2,13 +2,19 @@
 -- API roles cannot write it (PostgREST 42501 permission denied),
 -- and the waitlist-images storage bucket is missing.
 --
+-- IMPORTANT: Do NOT use the earlier PR #2 / main version of this script that
+-- GRANTed SELECT on waitlist_submissions to anon (that exposes every email
+-- and message). This version replaces that: REVOKE table SELECT, INSERT-only
+-- for anon, and public coin reads via waitlist_coins only.
+--
 -- Public access is intentionally narrow:
 --   - anon/authenticated may INSERT waitlist rows
 --   - anon/authenticated may SELECT only non-PII coin fields via waitlist_coins
 --   - full email/message reads require the service_role key (admin page)
 --
 -- Run this in the Supabase SQL Editor for project ccmqupdnenxuxmpgxzqo
--- (Dashboard → SQL → New query → Run). Safe to re-run.
+-- (Dashboard → SQL → New query → Run). Safe to re-run (also undoes the
+-- insecure public-SELECT policy if it was already applied).
 
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 
