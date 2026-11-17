@@ -1,3 +1,5 @@
+import nodemailer from "nodemailer"
+
 const DEFAULT_NOTIFY_TO = "john@jpastre.com"
 
 type WaitlistNotifyPayload = {
@@ -6,24 +8,53 @@ type WaitlistNotifyPayload = {
   imageUrl: string | null
 }
 
+type SendResult =
+  | { sent: true }
+  | { sent: false; reason: "missing_gmail_credentials" | "smtp_error" }
+
+function getGmailConfig() {
+  const user = process.env.GMAIL_USER || process.env.WAITLIST_GMAIL_USER
+  const pass = process.env.GMAIL_APP_PASSWORD || process.env.WAITLIST_GMAIL_APP_PASSWORD
+  const to = process.env.WAITLIST_NOTIFY_TO || DEFAULT_NOTIFY_TO
+  const from = process.env.WAITLIST_NOTIFY_FROM || (user ? `STYBL Waitlist <${user}>` : null)
+  return { user, pass, to, from }
+}
+
+async function sendMail(subject: string, text: string): Promise<SendResult> {
+  const { user, pass, to, from } = getGmailConfig()
+  if (!user || !pass || !from) {
+    console.error(
+      "[stybl] GMAIL_USER / GMAIL_APP_PASSWORD not set; email not sent to",
+      to,
+    )
+    return { sent: false, reason: "missing_gmail_credentials" }
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user, pass },
+    })
+
+    await transporter.sendMail({
+      from,
+      to,
+      subject,
+      text,
+    })
+
+    return { sent: true }
+  } catch (error) {
+    console.error("[stybl] Gmail SMTP send failed:", error)
+    return { sent: false, reason: "smtp_error" }
+  }
+}
+
 /**
- * Emails a waitlist signup to John. Uses Resend when RESEND_API_KEY is set.
+ * Emails a waitlist signup to John via Gmail app password SMTP.
  * Failures are logged and do not block the waitlist insert.
  */
 export async function notifyWaitlistSignup(payload: WaitlistNotifyPayload) {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) {
-    console.error(
-      "[stybl] RESEND_API_KEY is not set; waitlist stored but email not sent to",
-      process.env.WAITLIST_NOTIFY_TO || DEFAULT_NOTIFY_TO,
-    )
-    return { sent: false as const, reason: "missing_resend_api_key" }
-  }
-
-  const to = process.env.WAITLIST_NOTIFY_TO || DEFAULT_NOTIFY_TO
-  const from =
-    process.env.WAITLIST_NOTIFY_FROM || "STYBL Waitlist <onboarding@resend.dev>"
-
   const lines = [
     "New STYBL waitlist signup",
     "",
@@ -33,27 +64,7 @@ export async function notifyWaitlistSignup(payload: WaitlistNotifyPayload) {
     `Time: ${new Date().toISOString()}`,
   ]
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: [to],
-      subject: `STYBL waitlist: ${payload.email}`,
-      text: lines.join("\n"),
-    }),
-  })
-
-  if (!response.ok) {
-    const body = await response.text()
-    console.error("[stybl] Resend email failed:", response.status, body)
-    return { sent: false as const, reason: "resend_error" }
-  }
-
-  return { sent: true as const }
+  return sendMail(`STYBL waitlist: ${payload.email}`, lines.join("\n"))
 }
 
 type WaitlistRow = {
@@ -67,16 +78,6 @@ type WaitlistRow = {
  * Emails a digest of all waitlist rows to John (admin export).
  */
 export async function notifyWaitlistDigest(rows: WaitlistRow[]) {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) {
-    console.error("[stybl] RESEND_API_KEY is not set; cannot email waitlist digest")
-    return { sent: false as const, reason: "missing_resend_api_key" as const }
-  }
-
-  const to = process.env.WAITLIST_NOTIFY_TO || DEFAULT_NOTIFY_TO
-  const from =
-    process.env.WAITLIST_NOTIFY_FROM || "STYBL Waitlist <onboarding@resend.dev>"
-
   const csvHeader = "email,message,image_url,created_at"
   const csvRows = rows.map((row) =>
     [row.email, row.message || "", row.image_url || "", row.created_at]
@@ -97,25 +98,5 @@ export async function notifyWaitlistDigest(rows: WaitlistRow[]) {
     ...csvRows,
   ].join("\n")
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: [to],
-      subject: `STYBL waitlist digest (${rows.length})`,
-      text,
-    }),
-  })
-
-  if (!response.ok) {
-    const body = await response.text()
-    console.error("[stybl] Resend digest failed:", response.status, body)
-    return { sent: false as const, reason: "resend_error" as const }
-  }
-
-  return { sent: true as const }
+  return sendMail(`STYBL waitlist digest (${rows.length})`, text)
 }

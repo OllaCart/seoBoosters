@@ -70,13 +70,13 @@ export async function emailAllWaitlistEntries(adminSecret: string) {
 
     const result = await notifyWaitlistDigest(rows)
     if (!result.sent) {
-      if (result.reason === "missing_resend_api_key") {
+      if (result.reason === "missing_gmail_credentials") {
         return {
           error:
-            "RESEND_API_KEY is not set in Vercel. Add it, redeploy, then try again.",
+            "GMAIL_USER / GMAIL_APP_PASSWORD are not set in Vercel. Add them, redeploy, then try again.",
         }
       }
-      return { error: "Failed to send email. Check Resend configuration." }
+      return { error: "Failed to send email. Check Gmail SMTP configuration." }
     }
 
     return { success: true, count: rows.length }
